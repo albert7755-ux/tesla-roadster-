@@ -1,98 +1,161 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="Yield Runner 3D", layout="wide", page_icon="🏎️")
+st.set_page_config(page_title="Tesla Yield Runner 3D", layout="wide", page_icon="🏎️")
 
-# --- 側邊欄：市場控制面板 ---
 with st.sidebar:
-    st.header("⚙️ 殖利率與市場環境設定")
-    benchmark_rate = st.slider("聯準會基準利率 (SOFR/Fed Funds %)", 2.0, 8.0, 5.25, 0.25)
-    spread_spread = st.slider("信用利差 (Credit Spread bps)", 50, 600, 180, 10)
-    market_vol = st.select_slider("市場波動度 (MOVE Index)", options=["平靜", "震盪", "極端風暴"], value="震盪")
-    
-    st.divider()
-    st.caption("按 空白鍵 (Space) 發動浮動利率噴射，左右方向鍵 (A/D) 換道。")
+    st.header("⚡ 債券市場參數 (Bond Market)")
+    floating_rate = st.slider("浮動利率基準 (SOFR / Floating Benchmark %)", 2.0, 9.0, 5.25, 0.25)
+    credit_spread = st.slider("信用利差 (Credit Spread bps)", 50, 500, 160, 10)
+    st.markdown("---")
+    st.write("**操作說明：**")
+    st.write("🎮 **A / D 或 左右鍵**：換道避開 Default 違約錐")
+    st.write("🚀 **空白鍵 (Space)**：點火發動冷氣噴射推進（推力取決於浮動利率高低！）")
 
-# --- 主畫面：嵌入高畫質 Three.js 視窗 ---
-html_code = f"""
+# Three.js 3D 遊戲核心視窗
+html_game = f"""
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <style>
-        body {{ margin: 0; overflow: hidden; background: #05070f; font-family: sans-serif; }}
+        body {{ margin: 0; overflow: hidden; background: #050711; font-family: 'Segoe UI', sans-serif; }}
         #hud {{
-            position: absolute; top: 15px; left: 20px; color: #fff;
-            text-shadow: 0 0 10px #00ffcc; z-index: 10;
+            position: absolute; top: 15px; left: 20px; color: #fff; z-index: 100;
+            pointer-events: none; font-family: monospace;
         }}
-        .hud-val {{ font-size: 24px; font-weight: bold; color: #00ffcc; }}
+        .metric {{ font-size: 18px; margin-bottom: 5px; text-shadow: 0 0 10px #00ffcc; }}
+        .highlight {{ color: #00ffcc; font-size: 24px; font-weight: bold; }}
     </style>
-    <!-- 引入 Three.js 與 GLTF 載入器 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <div id="hud">
-        <div>FLOATING BOOST RATE: <span class="hud-val">{benchmark_rate}%</span></div>
-        <div>SPREAD: <span class="hud-val">{spread_spread} bps</span></div>
+        <div class="metric">FLOATING RATE: <span class="highlight">{floating_rate:.2f}%</span></div>
+        <div class="metric">CREDIT SPREAD: <span class="highlight">{credit_spread} bps</span></div>
+        <div class="metric" id="status">STATUS: CRUISING</div>
     </div>
-    
+
     <script>
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x05070f, 0.015);
+        scene.fog = new THREE.FogExp2(0x050711, 0.02);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 3.5, -7);
+        camera.position.set(0, 2.2, -5.5);
 
         const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.2;
+        renderer.toneMappingExposure = 1.4;
         document.body.appendChild(renderer.domElement);
 
-        // --- 賽博龐克光影 ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
+        // --- 賽博龐克光照 ---
+        const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+        scene.add(ambient);
 
-        const dirLight = new THREE.DirectionalLight(0x00e5ff, 2.5);
-        dirLight.position.set(5, 10, -5);
-        scene.add(dirLight);
+        const sun = new THREE.DirectionalLight(0x00e5ff, 2.0);
+        sun.position.set(5, 12, -10);
+        scene.add(sun);
 
-        const pinkLight = new THREE.PointLight(0xff0055, 3, 20);
-        pinkLight.position.set(-4, 2, 0);
-        scene.add(pinkLight);
+        const redGlow = new THREE.PointLight(0xff1144, 4, 15);
+        redGlow.position.set(0, 1.5, -2);
+        scene.add(redGlow);
 
-        // --- 載入真正 3D Tesla Roadster 模型 ---
-        let roadster;
+        // --- 跑道網格 ---
+        const trackGeo = new THREE.PlaneGeometry(16, 400, 8, 100);
+        const trackMat = new THREE.MeshBasicMaterial({{ color: 0x0a1428, wireframe: true }});
+        const track = new THREE.Mesh(trackGeo, trackMat);
+        track.rotation.x = -Math.PI / 2;
+        track.position.z = 150;
+        scene.add(track);
+
+        // --- 載入 Tesla Roadster 模型 ---
+        let car = new THREE.Group();
+        scene.add(car);
+
         const loader = new THREE.GLTFLoader();
-        
-        // 這裡可替換為你放置在 GitHub Raw 或 CDN 上的真實 Roadster .glb 網址
-        const modelUrl = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/SheenChair/glTF-Binary/SheenChair.glb'; 
-        
-        loader.load(modelUrl, (gltf) => {{
-            roadster = gltf.scene;
-            roadster.scale.set(1.5, 1.5, 1.5);
-            scene.add(roadster);
+        // 如果把模型放在 GitHub static 或 raw 連結，把 URL 填在這：
+        // 預設先用優雅的跑車外框代理，一旦載入成功即套用真車
+        loader.load('./static/scene.gltf', (gltf) => {{
+            const model = gltf.scene;
+            // 修正 Sketchfab FBX 轉 glTF 的座標軸與比例
+            model.scale.set(1.0, 1.0, 1.0);
+            model.rotation.y = Math.PI; 
+            car.add(model);
+        }}, undefined, (err) => {{
+            // 若本機未放檔案，建立臨時 Cyber-Car 確保立即可玩
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(1.6, 0.6, 3.8),
+                new THREE.MeshStandardMaterial({{ color: 0xcc0022, metalness: 0.9, roughness: 0.1 }})
+            );
+            body.position.y = 0.4;
+            car.add(body);
         }});
 
-        // --- 霓虹賽道網格 ---
-        const gridHelper = new THREE.GridHelper(300, 60, 0x00ffcc, 0x1a2634);
-        gridHelper.position.y = -0.5;
-        scene.add(gridHelper);
+        // --- 噴射推進尾焰粒子 ---
+        const flameGeo = new THREE.ConeGeometry(0.18, 1.2, 16);
+        flameGeo.rotateX(Math.PI / 2);
+        const flameMat = new THREE.MeshBasicMaterial({{ color: 0x00ffff, transparent: true, opacity: 0.0 }});
+        const leftFlame = new THREE.Mesh(flameGeo, flameMat);
+        const rightFlame = new THREE.Mesh(flameGeo, flameMat);
+        leftFlame.position.set(-0.6, 0.35, -2.1);
+        rightFlame.position.set(0.6, 0.35, -2.1);
+        car.add(leftFlame);
+        car.add(rightFlame);
 
-        // --- 動態渲染迴圈 ---
+        // --- 遊戲邏輯與控制 ---
+        let targetX = 0;
+        let isBoosting = false;
+        let floatBoostPower = {floating_rate} * 1.5; // 浮動利率決定噴射推力！
+
+        window.addEventListener('keydown', (e) => {{
+            if (e.key === 'a' || e.key === 'ArrowLeft') targetX = Math.max(-4.5, targetX - 2.5);
+            if (e.key === 'd' || e.key === 'ArrowRight') targetX = Math.min(4.5, targetX + 2.5);
+            if (e.code === 'Space') {{
+                isBoosting = true;
+                flameMat.opacity = 0.9;
+                document.getElementById('status').innerText = 'STATUS: FLOATING BOOST ACTIVE!';
+                document.getElementById('status').style.color = '#ff0055';
+            }}
+        }});
+
+        window.addEventListener('keyup', (e) => {{
+            if (e.code === 'Space') {{
+                isBoosting = false;
+                flameMat.opacity = 0.0;
+                document.getElementById('status').innerText = 'STATUS: CRUISING';
+                document.getElementById('status').style.color = '#fff';
+            }}
+        }});
+
+        // 渲染迴圈
+        let clock = new THREE.Clock();
         function animate() {{
             requestAnimationFrame(animate);
+            let dt = clock.getDelta();
 
-            // 賽道滾動效果
-            gridHelper.position.z = (gridHelper.position.z + 0.8) % 5;
+            // 車身左右插值換道
+            car.position.x += (targetX - car.position.x) * 10 * dt;
+            car.rotation.z = -(car.position.x - targetX) * 0.15; // 轉向側傾
 
-            // 鏡頭與車身微動
-            if (roadster) {{
-                camera.lookAt(roadster.position.x, roadster.position.y + 1, roadster.position.z + 4);
+            // 浮動噴射起飛機制
+            if (isBoosting) {{
+                car.position.y = THREE.MathUtils.lerp(car.position.y, 1.8 + (floatBoostPower * 0.1), dt * 8);
+                car.rotation.x = -0.15; // 車頭微仰
+            }} else {{
+                car.position.y = THREE.MathUtils.lerp(car.position.y, 0.0, dt * 8);
+                car.rotation.x = 0;
             }}
+
+            // 跑道滾動
+            track.position.z = (track.position.z - 45 * dt);
+            if (track.position.z < 0) track.position.z = 100;
+
+            // 攝影機動態跟隨
+            camera.position.x = car.position.x * 0.4;
+            camera.lookAt(car.position.x * 0.2, car.position.y + 0.8, car.position.z + 4);
 
             renderer.render(scene, camera);
         }}
@@ -108,4 +171,4 @@ html_code = f"""
 </html>
 """
 
-components.html(html_code, height=650)
+components.html(html_game, height=680)
