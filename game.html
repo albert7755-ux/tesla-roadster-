@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="google" content="notranslate">
+<title>Yield Runner 飛天跑車</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; overflow:hidden; background:#0b0f1a; font-family:'Segoe UI','Microsoft JhengHei','PingFang TC',sans-serif; user-select:none; color:#fff; }
+  canvas { display:block; }
+  .hud { position:absolute; pointer-events:none; z-index:10; text-shadow:0 1px 4px rgba(0,0,0,.8); }
+  #hud-time { top:12px; left:50%; transform:translateX(-50%); font-size:34px; font-weight:800; letter-spacing:1px; }
+  #hud-left { top:14px; left:16px; font-size:15px; line-height:1.7; }
+  #hud-left b { font-size:20px; color:#ffd166; }
+  #hud-rank { top:12px; right:18px; font-size:30px; font-weight:800; color:#ffd166; }
+  #progress { top:62px; left:50%; transform:translateX(-50%); width:min(520px,70vw); height:8px; background:rgba(255,255,255,.18); border-radius:4px; }
+  .pdot { position:absolute; top:-5px; width:18px; height:18px; border-radius:50%; border:2px solid #fff; transform:translateX(-50%); }
+  #progress .flag { position:absolute; right:-8px; top:-10px; font-size:18px; }
+  #speedo { bottom:18px; right:22px; text-align:right; }
+  #speedo .v { font-size:54px; font-weight:800; line-height:1; }
+  #speedo .u { font-size:15px; opacity:.8; }
+  #nitro-wrap { width:180px; height:10px; background:rgba(255,255,255,.2); border-radius:5px; margin:6px 0 0 auto; overflow:hidden; }
+  #nitro { height:100%; width:0%; background:linear-gradient(90deg,#00d5ff,#7b5cff); }
+  #nitro-label { font-size:12px; opacity:.85; margin-top:3px; }
+  #toast { top:30%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:900; opacity:0; transition:opacity .25s; text-align:center; }
+  #hint { bottom:22px; left:50%; transform:translateX(-50%); font-size:24px; font-weight:800; color:#ffd166; opacity:0; transition:opacity .2s; }
+  #countdown { top:42%; left:50%; transform:translate(-50%,-50%); font-size:120px; font-weight:900; color:#ffd166; display:none; }
+  #credit { bottom:4px; left:8px; font-size:10px; opacity:.45; }
+  #mute { position:absolute; bottom:22px; left:14px; z-index:20; background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.3); color:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:14px; }
+  .panel { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:50; background:rgba(10,14,26,.92);
+           border:1px solid rgba(255,209,102,.6); border-radius:14px; padding:22px 28px; width:min(460px,92vw); text-align:center; display:none;
+           box-shadow:0 10px 40px rgba(0,0,0,.6); max-height:94vh; overflow:auto; }
+  .panel h1 { margin:0 0 4px; font-size:28px; color:#ffd166; }
+  .panel h2 { margin:6px 0 10px; font-size:18px; color:#ffd166; }
+  .panel p { margin:6px 0; font-size:14px; color:#cfd6e4; }
+  .panel input { width:100%; padding:10px; font-size:17px; border-radius:8px; border:1px solid #556; background:#141a2b; color:#fff; text-align:center; margin:6px 0; }
+  .btn { display:block; width:100%; margin:8px 0; padding:11px; font-size:17px; font-weight:700; border:none; border-radius:8px; cursor:pointer; background:#ffd166; color:#1a1300; }
+  .btn.alt { background:#2a3350; color:#fff; }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+  .row { display:flex; gap:8px; } .row > * { flex:1; }
+  .code { font-size:44px; font-weight:900; letter-spacing:8px; color:#ffd166; }
+  table { width:100%; border-collapse:collapse; font-size:14px; margin-top:6px; }
+  td, th { padding:5px 4px; border-bottom:1px solid rgba(255,255,255,.1); }
+  th { color:#9aa4b8; font-weight:600; }
+  .me td { color:#ffd166; font-weight:700; }
+  .keys { font-size:13px; color:#9aa4b8; line-height:1.7; text-align:left; background:rgba(255,255,255,.05); border-radius:8px; padding:8px 12px; margin:8px 0; }
+  .warn { color:#ff8fa3 !important; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body tabindex="0">
+
+<div id="hud-time" class="hud">0.0</div>
+<div id="hud-left" class="hud">票息 <b id="h-coupon">0</b>　特技 <b id="h-stunt">0</b><br>追撞 <b id="h-crash">0</b></div>
+<div id="hud-rank" class="hud"></div>
+<div id="progress" class="hud"><span class="flag">🏁</span></div>
+<div id="speedo" class="hud"><div><span class="v" id="spd">0</span> <span class="u">km/h</span></div>
+  <div id="nitro-wrap"><div id="nitro"></div></div><div id="nitro-label">氮氣（空白鍵）</div></div>
+<div id="toast" class="hud"></div>
+<div id="hint" class="hud">按住 → 往右翻滾！</div>
+<div id="countdown" class="hud">3</div>
+<div id="credit" class="hud">3D model "Tesla Roadster 2020" by metarex.4d (Sketchfab), CC-BY-4.0</div>
+<button id="mute">🔊</button>
+
+<!-- 大廳 -->
+<div id="p-lobby" class="panel">
+  <h1>YIELD RUNNER 飛天跑車</h1>
+  <p>高速公路 3 公里衝刺｜閃車流、吃票息、飛越卡車翻滾！</p>
+  <input id="name" maxlength="12" placeholder="輸入你的名字">
+  <div class="keys">← → 轉向　|　↓ 煞車　|　空白鍵 氮氣加速<br>
+    撞上<b style="color:#ffd166">黃黑斜板卡車</b>會飛起來，空中<b style="color:#ffd166">按住 →</b> 往右翻一圈，落地擺正就加分！</div>
+  <button class="btn" id="b-solo">單人練習</button>
+  <button class="btn alt" id="b-host">開房間 PK</button>
+  <div class="row"><input id="code-in" maxlength="4" placeholder="房號 4 碼" inputmode="numeric"><button class="btn alt" id="b-join" style="margin:6px 0">加入</button></div>
+  <p id="net-msg" class="warn"></p>
+  <h2>🏆 排行榜</h2>
+  <table id="lb-lobby"></table>
+</div>
+
+<!-- 房間 -->
+<div id="p-room" class="panel">
+  <p>房號（告訴同事）</p>
+  <div class="code" id="room-code">----</div>
+  <h2>已進房</h2>
+  <table id="room-list"></table>
+  <button class="btn" id="b-start">開始比賽</button>
+  <p id="room-wait">等待房主開始…</p>
+  <button class="btn alt" id="b-leave">離開房間</button>
+</div>
+
+<!-- 結算 -->
+<div id="p-result" class="panel">
+  <h1 id="r-title">完賽！</h1>
+  <div class="code" id="r-score" style="font-size:40px;letter-spacing:1px">0</div>
+  <p id="r-detail"></p>
+  <div id="r-pk"><h2>本場名次</h2><table id="r-pk-table"></table></div>
+  <h2>🏆 排行榜</h2>
+  <table id="lb-result"></table>
+  <button class="btn" id="b-again">再來一場</button>
+  <button class="btn alt" id="b-back">回大廳</button>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+// ════════════════ 遊戲設定（只有你改得到，專員看不到） ════════════════
+const CFG = {
+  TRACK_LEN: 3000,       // 賽道長度（公尺）
+  MAX_KMH: 170,          // 一般最高時速
+  NITRO_KMH: 220,        // 氮氣最高時速
+  ACCEL: 7,              // 加速度（越大起步越快）
+  TIME_LIMIT: 120,       // 超過幾秒算沒完賽
+  TRAFFIC_GAP: [55, 95], // 車流間距（公尺，越小車越多）
+  RAMP_EVERY: 5,         // 每幾台車出現一台斜板卡車
+  SLOWMO: 0.45,          // 飛越時的慢動作倍率
+};
+const SUPABASE_URL = "__SUPABASE_URL__";
+const SUPABASE_KEY = "__SUPABASE_ANON_KEY__";
+const CAR_B64 = "__CAR_B64__";
+// 排行榜：沿用債速配的 flip_scores 表，用 BOARD_ID 分開
+const LB = { table: 'flip_scores', board: 'yield-runner' };
+
+// 禁止 Chrome 自動翻譯（翻譯會讓 Streamlit 當掉）
+try { const r = window.parent.document.documentElement; r.setAttribute('translate','no'); r.lang='zh-Hant'; } catch(e) {}
+
+const $ = id => document.getElementById(id);
+const KMH = 3.6;
+const LANES_X = [-5.4, -1.8, 1.8, 5.4];   // 四線道中心（x 越小 = 畫面越右邊）
+const RAIL = 8.0;
+const netOK = SUPABASE_URL.startsWith('http') && SUPABASE_KEY.length > 20 && window.supabase;
+const sb = netOK ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ════════════════ 場景 ════════════════
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const SKY_FOG = 0xf0b07a;
+scene.fog = new THREE.Fog(SKY_FOG, 80, 520);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1500);
+
+// 黃昏天空
+{
+  const geo = new THREE.SphereGeometry(1200, 32, 16);
+  const mat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color(0x2b4c8c) }, mid: { value: new THREE.Color(0xf6a96b) }, bot: { value: new THREE.Color(0xf0b07a) } },
+    vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader: 'uniform vec3 top; uniform vec3 mid; uniform vec3 bot; varying vec3 vP; void main(){ float h=vP.y; vec3 c = h>0.08 ? mix(mid, top, smoothstep(0.08,0.55,h)) : mix(bot, mid, smoothstep(-0.05,0.08,h)); gl_FragColor=vec4(c,1.0); }' });
+  const sky = new THREE.Mesh(geo, mat); sky.name = 'sky'; scene.add(sky);
+  const sun = new THREE.Mesh(new THREE.CircleGeometry(40, 32), new THREE.MeshBasicMaterial({ color: 0xffe2a8, fog: false }));
+  sun.position.set(-150, 60, 1000); sun.lookAt(0, 0, 0); sky.add(sun);
+}
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x4a3a2a, 1.1));
+const sunLight = new THREE.DirectionalLight(0xffd2a0, 2.2); sunLight.position.set(-40, 60, 80); scene.add(sunLight);
+// 車漆反射用的簡易環境
+{
+  const pm = new THREE.PMREMGenerator(renderer); const es = new THREE.Scene();
+  es.background = new THREE.Color(0x6a7fa8);
+  const a = new THREE.Mesh(new THREE.PlaneGeometry(30, 6), new THREE.MeshBasicMaterial({ color: 0xffe0b0 })); a.position.set(0, 10, 0); a.rotation.x = Math.PI / 2; es.add(a);
+  const g = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshBasicMaterial({ color: 0x3a3530 })); g.position.y = -5; g.rotation.x = -Math.PI / 2; es.add(g);
+  scene.environment = pm.fromScene(es, 0.03).texture;
+}
+
+function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t; }
+
+// 道路（含車道線）：一張貼圖 = 寬 18m、長 12m
+const ROAD_W = 18, TILE_L = 12;
+const roadTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#3b3d42'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 4000; i++) { const v = 50 + Math.random() * 25; g.fillStyle = `rgb(${v},${v},${v + 3})`; g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5); }
+  const X = x => (x + ROAD_W / 2) / ROAD_W * w;
+  g.fillStyle = '#e8e8e8'; [-7.2, 7.2].forEach(x => g.fillRect(X(x) - 2, 0, 4, h));
+  [-3.6, 0, 3.6].forEach(x => g.fillRect(X(x) - 1.5, 0, 3, h * 4 / 12));
+});
+roadTex.wrapS = THREE.ClampToEdgeWrapping; roadTex.wrapT = THREE.RepeatWrapping;
+let roadLen = 0;
+const world = new THREE.Group(); scene.add(world);
+
+function buildStatic() {
+  roadLen = CFG.TRACK_LEN + 900;
+  roadTex.repeat.set(1, roadLen / TILE_L);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, roadLen), new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.92 }));
+  road.rotation.x = -Math.PI / 2; road.position.set(0, 0, roadLen / 2 - 200); scene.add(road);
+  const grass = new THREE.Mesh(new THREE.PlaneGeometry(1400, roadLen + 800), new THREE.MeshStandardMaterial({ color: 0x5a6b3a, roughness: 1 }));
+  grass.rotation.x = -Math.PI / 2; grass.position.set(0, -0.05, roadLen / 2 - 200); scene.add(grass);
+  // 護欄
+  const railMat = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, metalness: 0.7, roughness: 0.35 });
+  [-1, 1].forEach(s => { const r = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.35, roadLen), railMat); r.position.set(s * (RAIL + 0.3), 0.75, roadLen / 2 - 200); scene.add(r); });
+  const postGeo = new THREE.BoxGeometry(0.12, 0.8, 0.12);
+  const posts = new THREE.InstancedMesh(postGeo, railMat, Math.ceil(roadLen / 4) * 2); const m = new THREE.Matrix4(); let k = 0;
+  for (let z = -200; z < roadLen - 200; z += 4) [-1, 1].forEach(s => { m.makeTranslation(s * (RAIL + 0.3), 0.4, z); posts.setMatrixAt(k++, m); });
+  posts.count = k; scene.add(posts);
+  // 路燈
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x6b7078, metalness: 0.6, roughness: 0.5 });
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff1c8 });
+  const nL = Math.ceil(roadLen / 50) * 2;
+  const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.16, 9, 8), poleMat, nL);
+  const arms = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 0.15, 0.25), poleMat, nL);
+  const lamps = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.12, 0.4), lampMat, nL); k = 0;
+  for (let z = -200; z < roadLen - 200; z += 50) [-1, 1].forEach(s => {
+    m.makeTranslation(s * 9.4, 4.5, z); poles.setMatrixAt(k, m);
+    m.makeTranslation(s * 8.4, 8.9, z); arms.setMatrixAt(k, m);
+    m.makeTranslation(s * 7.6, 8.8, z); lamps.setMatrixAt(k, m); k++; });
+  scene.add(poles, arms, lamps);
+  // 大樓（遠景）＋樹
+  const winTex = canvasTex(64, 128, (g, w, h) => { g.fillStyle = '#2d3442'; g.fillRect(0, 0, w, h);
+    for (let y = 4; y < h; y += 8) for (let x = 4; x < w; x += 8) { g.fillStyle = Math.random() < 0.35 ? '#ffd9a0' : '#3e4758'; g.fillRect(x, y, 5, 5); } });
+  winTex.wrapS = winTex.wrapT = THREE.RepeatWrapping; winTex.repeat.set(2, 3);
+  const bMat = new THREE.MeshStandardMaterial({ map: winTex, roughness: 0.7, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.25 });
+  const nB = Math.ceil(roadLen / 30) * 2;
+  const blds = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), bMat, nB); k = 0;
+  const rnd = mulberry32(7);
+  for (let z = -200; z < roadLen - 200; z += 30) [-1, 1].forEach(s => {
+    const h = 15 + rnd() * 55, w = 14 + rnd() * 16;
+    m.compose(new THREE.Vector3(s * (45 + rnd() * 50), h / 2, z + rnd() * 10), new THREE.Quaternion(), new THREE.Vector3(w, h, 18 + rnd() * 10));
+    blds.setMatrixAt(k++, m); });
+  scene.add(blds);
+  const nT = Math.ceil(roadLen / 14) * 2;
+  const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(1.8, 5, 7), new THREE.MeshStandardMaterial({ color: 0x3f5a2c, roughness: 1 }), nT);
+  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.25, 1.6, 6), new THREE.MeshStandardMaterial({ color: 0x5b4330 }), nT); k = 0;
+  for (let z = -200; z < roadLen - 200; z += 14) [-1, 1].forEach(s => {
+    const x = s * (13 + rnd() * 18), sc = 0.8 + rnd() * 0.7;
+    m.compose(new THREE.Vector3(x, 3.6 * sc, z + rnd() * 6), new THREE.Quaternion(), new THREE.Vector3(sc, sc, sc)); crowns.setMatrixAt(k, m);
+    m.compose(new THREE.Vector3(x, 0.8, z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1)); trunks.setMatrixAt(k, m); k++; });
+  scene.add(crowns, trunks);
+  // 債券看板
+  const tips = ['票息＝持有期間的現金流', '利差擴大＝市場要更多風險補償', '存續期間越長，對利率越敏感', '投資等級：BBB- 以上', '分散發行人，降低單一違約衝擊'];
+  tips.forEach((t, i) => {
+    const tex = canvasTex(1024, 256, (g, w, h) => { g.fillStyle = '#0d2a52'; g.fillRect(0, 0, w, h); g.strokeStyle = '#ffd166'; g.lineWidth = 12; g.strokeRect(6, 6, w - 12, h - 12);
+      g.fillStyle = '#ffd166'; g.font = 'bold 40px "Microsoft JhengHei",sans-serif'; g.textAlign = 'center'; g.fillText('債券小知識', w / 2, 70);
+      g.fillStyle = '#fff'; g.font = 'bold 64px "Microsoft JhengHei",sans-serif'; g.fillText(t, w / 2, 170); });
+    const s = i % 2 ? 1 : -1;
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(16, 4), new THREE.MeshBasicMaterial({ map: tex }));
+    board.position.set(s * 14, 7, 450 + i * 520); board.rotation.y = Math.PI; scene.add(board);
+    [-6, 6].forEach(dx => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 7), poleMat); p.position.set(s * 14 + dx, 3.5, 450 + i * 520 + 0.2); scene.add(p); });
+  });
+  // 起點、終點
+  const fin = canvasTex(512, 64, (g, w, h) => { for (let x = 0; x < 32; x++) for (let y = 0; y < 4; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#fff'; g.fillRect(x * 16, y * 16, 16, 16); } });
+  const finLine = new THREE.Mesh(new THREE.PlaneGeometry(14.4, 2), new THREE.MeshBasicMaterial({ map: fin }));
+  finLine.rotation.x = -Math.PI / 2; finLine.position.set(0, 0.02, CFG.TRACK_LEN); scene.add(finLine);
+  const banner = canvasTex(1024, 160, (g, w, h) => { g.fillStyle = '#c1121f'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.font = 'bold 110px sans-serif'; g.textAlign = 'center'; g.fillText('FINISH 終點', w / 2, 120); });
+  const arch = new THREE.Mesh(new THREE.BoxGeometry(18, 2.4, 0.4), new THREE.MeshBasicMaterial({ map: banner })); arch.position.set(0, 8, CFG.TRACK_LEN); arch.rotation.y = Math.PI; scene.add(arch);
+  [-9, 9].forEach(x => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.6, 9, 0.6), poleMat); p.position.set(x, 4.5, CFG.TRACK_LEN); scene.add(p); });
+  const stl = new THREE.Mesh(new THREE.PlaneGeometry(14.4, 0.5), new THREE.MeshBasicMaterial({ color: 0xffffff })); stl.rotation.x = -Math.PI / 2; stl.position.set(0, 0.02, 0); scene.add(stl);
+}
+buildStatic();
+
+// ════════════════ 車流、路障、票息（同一個 seed 大家看到的一模一樣） ════════════════
+const shared = {
+  paint: [0xe9ecef, 0x1d3557, 0x6c757d, 0x9d0208, 0x2a9d8f, 0x222222, 0xf4a261].map(c => new THREE.MeshStandardMaterial({ color: c, metalness: 0.5, roughness: 0.35 })),
+  glass: new THREE.MeshStandardMaterial({ color: 0x1b2330, metalness: 0.9, roughness: 0.1 }),
+  tire: new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 }),
+  tail: new THREE.MeshBasicMaterial({ color: 0xff2030 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.8 }),
+  wheel: (() => { const g = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 14); g.rotateZ(Math.PI / 2); return g; })(),
+};
+const trailerTex = canvasTex(512, 128, (g, w, h) => { g.fillStyle = '#f1f1f1'; g.fillRect(0, 0, w, h); g.fillStyle = '#0d2a52'; g.font = 'bold 54px sans-serif'; g.textAlign = 'center'; g.fillText('COUPON EXPRESS', w / 2, 82); });
+const rampTex = canvasTex(128, 128, (g, w, h) => { for (let i = -4; i < 8; i++) { g.fillStyle = i % 2 ? '#111' : '#ffcc00'; g.beginPath(); g.moveTo(i * 24, 0); g.lineTo(i * 24 + 24, 0); g.lineTo(i * 24 + 24 + 64, h); g.lineTo(i * 24 + 64, h); g.fill(); } });
+const barrTex = canvasTex(256, 128, (g, w, h) => { for (let i = -2; i < 12; i++) { g.fillStyle = i % 2 ? '#fff' : '#d00000'; g.beginPath(); g.moveTo(i * 32, 0); g.lineTo(i * 32 + 32, 0); g.lineTo(i * 32 + 64, h); g.lineTo(i * 32 + 32, h); g.fill(); }
+  g.fillStyle = '#d00000'; g.fillRect(40, 30, 176, 68); g.fillStyle = '#fff'; g.font = 'bold 44px sans-serif'; g.textAlign = 'center'; g.fillText('違約', w / 2, 80); });
+
+function addWheels(grp, xs, zs, y = 0.4) { xs.forEach(x => zs.forEach(z => { const w = new THREE.Mesh(shared.wheel, shared.tire); w.position.set(x, y, z); grp.add(w); })); }
+function makeCar(rnd) {
+  const g = new THREE.Group(); const paint = shared.paint[Math.floor(rnd() * shared.paint.length)];
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 4.3), paint); body.position.y = 0.7; g.add(body);
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 2.2), shared.glass); cab.position.set(0, 1.3, -0.2); g.add(cab);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 1.8), paint); roof.position.set(0, 1.62, -0.25); g.add(roof);
+  [-0.65, 0.65].forEach(x => { const t = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.05), shared.tail); t.position.set(x, 0.85, -2.16); g.add(t); });
+  addWheels(g, [-0.85, 0.85], [-1.35, 1.35]);
+  return { g, len: 4.3, w: 1.9, h: 1.7, rearOff: -2.15, frontOff: 2.15 };
+}
+function makeTruck(rnd, ramp) {
+  const g = new THREE.Group();
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.6, 2.4), shared.paint[[1, 3, 4][Math.floor(rnd() * 3)]]); cab.position.set(0, 1.8, 4.6); g.add(cab);
+  const ws = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.0, 0.05), shared.glass); ws.position.set(0, 2.5, 5.81); g.add(ws);
+  if (!ramp) {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.2, 8.5), [shared.dark, shared.dark, shared.dark, shared.dark, new THREE.MeshStandardMaterial({ color: 0xf1f1f1 }), new THREE.MeshStandardMaterial({ map: trailerTex })]);
+    box.position.set(0, 2.2, -0.9); g.add(box);
+    addWheels(g, [-1.1, 1.1], [-4.0, -2.9, 4.4], 0.5);
+    [-1.1, 1.1].forEach(x => { const t = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.05), shared.tail); t.position.set(x, 0.9, -5.17); g.add(t); });
+    return { g, len: 11.6, w: 2.6, h: 3.8, ramp: false, rearOff: -5.2, frontOff: 5.8 };
+  }
+  // 斜板卡車：平板 + 尾端斜板
+  const bed = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.4, 8.5), shared.dark); bed.position.set(0, 1.3, -0.9); g.add(bed);
+  const rampLen = 4.2, rampH = 1.5;
+  const rampGeo = new THREE.BoxGeometry(2.5, 0.12, Math.hypot(rampLen, rampH));
+  const rm = new THREE.Mesh(rampGeo, new THREE.MeshStandardMaterial({ map: rampTex, roughness: 0.6 }));
+  rm.rotation.x = -Math.atan2(rampH, rampLen); rm.position.set(0, 0.75, -5.15 - rampLen / 2); g.add(rm);
+  addWheels(g, [-1.1, 1.1], [-3.8, -2.7, 4.4], 0.5);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshBasicMaterial({ map: canvasTex(256, 128, (c, w, h) => { c.fillStyle = '#ffcc00'; c.fillRect(0, 0, w, h); c.fillStyle = '#111'; c.font = 'bold 54px sans-serif'; c.textAlign = 'center'; c.fillText('↑ JUMP', w / 2, 84); }) }));
+  sign.position.set(0, 2.6, 3.3); sign.rotation.y = Math.PI; g.add(sign);
+  return { g, len: 15.0, w: 2.6, h: 1.5, ramp: true, rearOff: -5.15 - rampLen, frontOff: 5.8 };
+}
+
+let traffic = [], barriers = [], coins = [];
+const trackGroup = new THREE.Group(); scene.add(trackGroup);
+const coinMat = new THREE.MeshStandardMaterial({ color: 0xffc935, metalness: 0.9, roughness: 0.25, emissive: 0x6b4a00 });
+const coinGeo = (() => { const g = new THREE.CylinderGeometry(0.75, 0.75, 0.15, 24); g.rotateX(Math.PI / 2); return g; })();
+
+function buildTrack(seed) {
+  trackGroup.clear(); traffic = []; barriers = []; coins = [];
+  const rnd = mulberry32(seed);
+  let z = 110, n = 0;
+  while (z < CFG.TRACK_LEN - 60) {
+    n++;
+    const isRamp = n % CFG.RAMP_EVERY === 0;
+    const isTruck = isRamp || rnd() < 0.3;
+    const lane = Math.floor(rnd() * 4);
+    const v = (isTruck ? 62 + rnd() * 14 : 78 + rnd() * 22) / KMH;
+    const o = isTruck ? makeTruck(rnd, isRamp) : makeCar(rnd);
+    o.lane = lane; o.x = LANES_X[lane]; o.z0 = z; o.v = v; o.z = z;
+    o.g.position.set(o.x, 0, z); trackGroup.add(o.g); traffic.push(o);
+    // 斜板卡車後方空中放金幣，飛起來才吃得到
+    if (isRamp) [[10, 8.2], [20, 8.4], [30, 6.8]].forEach(([dz, y]) => addCoin(o.x, y, z + dz, true, o));
+    z += CFG.TRAFFIC_GAP[0] + rnd() * (CFG.TRAFFIC_GAP[1] - CFG.TRAFFIC_GAP[0]);
+  }
+  // 違約路障（不會動）
+  for (let bz = 380; bz < CFG.TRACK_LEN - 100; bz += 330 + rnd() * 120) {
+    const lane = Math.floor(rnd() * 4);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.2, 0.5), [shared.dark, shared.dark, shared.dark, shared.dark, new THREE.MeshStandardMaterial({ map: barrTex }), new THREE.MeshStandardMaterial({ map: barrTex })]);
+    b.position.set(LANES_X[lane], 0.6, bz); trackGroup.add(b); barriers.push({ x: LANES_X[lane], z: bz, w: 3.0 });
+  }
+  // 地面票息
+  for (let cz = 70; cz < CFG.TRACK_LEN - 40; cz += 60 + rnd() * 50) {
+    const lane = Math.floor(rnd() * 4);
+    for (let i = 0; i < 3; i++) addCoin(LANES_X[lane], 1.1, cz + i * 6, false);
+  }
+}
+function addCoin(x, y, z, sky, rideOn) {
+  const m = new THREE.Mesh(coinGeo, coinMat); m.position.set(x, y, z); trackGroup.add(m);
+  coins.push({ m, x, y, z, sky, taken: false, ride: rideOn || null, dz: rideOn ? z - rideOn.z0 : 0 });
+}
+
+// ════════════════ 玩家車 ════════════════
+function makePlayerCar() {
+  const root = new THREE.Group();            // 位置
+  const pivot = new THREE.Group();           // 翻滾、俯仰用
+  pivot.position.y = 0.6; root.add(pivot);
+  const body = new THREE.Group(); body.position.y = -0.6; pivot.add(body);
+  scene.add(root);
+  return { root, pivot, body };
+}
+const me = makePlayerCar();
+let carTemplate = null;
+function paintModel(model, color) {
+  model.traverse(o => { if (o.isMesh && o.material && /paint/i.test(o.material.name)) { o.material = o.material.clone(); o.material.color.set(color); o.material.metalness = 0.6; o.material.roughness = 0.25; } });
+}
+function carMeshFor(color) {
+  if (!carTemplate) { const g = makeCar(() => 0.5).g; g.traverse(o => { if (o.isMesh && o.material && shared.paint.includes(o.material)) { o.material = o.material.clone(); o.material.color.set(color); } }); return g; }
+  const m = carTemplate.clone(true); paintModel(m, color); return m;
+}
+const MY_COLOR = 0xd90429;
+const PLAYER_COLORS = [0x00b4d8, 0xffb703, 0x80ed99, 0xc77dff, 0xff7aa2];
+function loadCar() {
+  return new Promise(res => {
+    if (CAR_B64.length < 100) return res(false);
+    try {
+      const bin = Uint8Array.from(atob(CAR_B64), c => c.charCodeAt(0));
+      const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
+      loader.parse(bin.buffer, '', gltf => {
+        const model = gltf.scene;
+        const box = new THREE.Box3().setFromObject(model); const size = box.getSize(new THREE.Vector3());
+        model.scale.setScalar(4.5 / Math.max(size.x, size.z));
+        const b2 = new THREE.Box3().setFromObject(model); const c = b2.getCenter(new THREE.Vector3());
+        model.position.set(-c.x, -b2.min.y, -c.z);
+        carTemplate = new THREE.Group(); carTemplate.add(model);
+        res(true);
+      }, () => res(false));
+    } catch (e) { res(false); }
+  });
+}
+
+// 對手（鬼影車）
+const ghosts = new Map();
+function ghostFor(id, name, idx) {
+  if (ghosts.has(id)) return ghosts.get(id);
+  const color = PLAYER_COLORS[idx % PLAYER_COLORS.length];
+  const g = makePlayerCar(); g.body.add(carMeshFor(color));
+  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(256, 64, (c, w, h) => { c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(0, 0, w, h); c.fillStyle = '#' + color.toString(16).padStart(6, '0'); c.font = 'bold 36px "Microsoft JhengHei",sans-serif'; c.textAlign = 'center'; c.fillText(name, w / 2, 45); }), depthTest: false }));
+  tag.scale.set(3, 0.75, 1); tag.position.y = 2.4; g.root.add(tag);
+  const o = { ...g, color, name, x: 0, z: 0, y: 0, roll: 0, pitch: 0, yaw: 0, tx: 0, tz: 0, ty: 0, done: false, dist: 0 };
+  ghosts.set(id, o); return o;
+}
+function clearGhosts() { ghosts.forEach(g => scene.remove(g.root)); ghosts.clear(); }
+
+// ════════════════ 音效（引擎聲） ════════════════
+let actx = null, osc = null, osc2 = null, gain = null, muted = false;
+function initAudio() {
+  if (actx) return;
+  try {
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    gain = actx.createGain(); gain.gain.value = 0;
+    const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+    osc = actx.createOscillator(); osc.type = 'sawtooth'; osc2 = actx.createOscillator(); osc2.type = 'square';
+    osc.connect(lp); osc2.connect(lp); lp.connect(gain); gain.connect(actx.destination); osc.start(); osc2.start();
+  } catch (e) { actx = null; }
+}
+function sfx(freq, dur, type = 'square', vol = 0.12) {
+  if (!actx || muted) return;
+  const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+  o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+}
+$('mute').onclick = () => { muted = !muted; $('mute').textContent = muted ? '🔇' : '🔊'; };
+
+// ════════════════ 狀態 ════════════════
+const S = {
+  phase: 'lobby',      // lobby / room / countdown / race / done
+  mode: 'solo',        // solo / pk
+  seed: 1, t: 0, count: 0,
+  x: LANES_X[1], z: -6, y: 0, speed: 0, vx: 0, vy: 0,
+  air: false, roll: 0, rollTotal: 0, pitch: 0, yaw: 0,
+  nitro: 40, coupons: 0, stunt: 0, crashes: 0, shake: 0,
+  finishTime: null, score: 0,
+};
+const keys = {};
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') { if (e.key === 'Enter' && e.target.id === 'code-in') $('b-join').click(); return; }
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) e.preventDefault();
+  keys[e.code] = true;
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+document.body.addEventListener('pointerdown', () => { window.focus(); initAudio(); if (actx && actx.state === 'suspended') actx.resume(); });
+
+function toast(msg, color = '#fff', ms = 1200) { const t = $('toast'); t.innerHTML = msg; t.style.color = color; t.style.opacity = 1; clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = 0, ms); }
+function show(id) { ['p-lobby', 'p-room', 'p-result'].forEach(p => $(p).style.display = p === id ? 'block' : 'none'); }
+
+function resetRun(seed) {
+  S.seed = seed; buildTrack(seed);
+  Object.assign(S, { t: 0, x: LANES_X[1], z: -6, y: 0, speed: 0, vx: 0, vy: 0, air: false, roll: 0, rollTotal: 0, pitch: 0, yaw: 0,
+    nitro: 40, coupons: 0, stunt: 0, crashes: 0, shake: 0, finishTime: null, score: 0 });
+  ghosts.forEach(g => { g.done = false; g.dist = 0; g.finish = null; });
+  pkResults = {};
+}
+function startCountdown(seed) {
+  resetRun(seed); show(null); S.phase = 'countdown'; S.count = 3.0;
+  $('countdown').style.display = 'block'; window.focus();
+}
+
+// ════════════════ 物理與遊戲邏輯 ════════════════
+const tmp = new THREE.Vector3();
+function updateTraffic() {
+  traffic.forEach(o => { o.z = o.z0 + o.v * S.t; o.g.position.z = o.z; });
+  coins.forEach(c => { if (c.ride) c.m.position.z = c.z = c.ride.z + c.dz; });
+}
+function crash(msg, pushZ) {
+  S.crashes++; S.speed *= 0.3; S.shake = 0.6; if (pushZ !== undefined) S.z = pushZ;
+  toast(msg, '#ff5d73'); sfx(90, 0.35, 'sawtooth', 0.25);
+}
+function physics(dt) {
+  const steer = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0); // 1 = 往畫面右邊
+  const braking = keys.ArrowDown || keys.KeyS;
+  const nitroOn = (keys.Space) && S.nitro > 0 && !S.air;
+  const vmax = (nitroOn ? CFG.NITRO_KMH : CFG.MAX_KMH) / KMH;
+
+  if (!S.air) {
+    if (braking) S.speed = Math.max(0, S.speed - 22 * dt);
+    else if (S.speed < vmax) S.speed = Math.min(vmax, S.speed + CFG.ACCEL * (nitroOn ? 1.8 : 1) * (1 - 0.5 * S.speed / vmax) * dt);
+    else S.speed = Math.max(vmax, S.speed - 6 * dt);
+    if (nitroOn) S.nitro = Math.max(0, S.nitro - 28 * dt);
+    // 轉向：畫面右邊 = x 變小
+    const grip = Math.min(1, S.speed / 12);
+    S.vx += ((-steer * 10 * grip) - S.vx) * Math.min(1, 6 * dt);
+    S.x += S.vx * dt;
+    if (Math.abs(S.x) > RAIL - 1.0) { S.x = Math.sign(S.x) * (RAIL - 1.0); S.vx = 0; if (S.speed > 15) { S.speed -= 25 * dt; S.shake = Math.max(S.shake, 0.15); } }
+    S.yaw = THREE.MathUtils.lerp(S.yaw, S.vx * 0.035, 8 * dt);
+    S.pitch = THREE.MathUtils.lerp(S.pitch, braking ? 0.03 : nitroOn ? -0.025 : 0, 6 * dt);
+    S.roll = THREE.MathUtils.lerp(S.roll, S.vx * 0.006, 6 * dt);
+  } else {
+    // 空中：往右翻 = roll 變大
+    S.vy -= 20 * dt; S.y += S.vy * dt;
+    S.roll += steer * 7.2 * dt; S.rollTotal += steer * 7.2 * dt;
+    S.pitch = THREE.MathUtils.lerp(S.pitch, S.vy > 0 ? -0.18 : 0.12, 2 * dt);
+    S.yaw = THREE.MathUtils.lerp(S.yaw, 0, 3 * dt);
+    if (S.y <= 0) land();
+  }
+  S.z += S.speed * dt;
+
+  // 碰撞
+  if (!S.air) {
+    for (const o of traffic) {
+      const carRear = o.z + o.rearOff, front = o.z + o.frontOff;
+      if (S.z + 2.2 > carRear && S.z - 2.2 < front && Math.abs(S.x - o.x) < o.w / 2 + 0.9) {
+        if (o.ramp && Math.abs(S.x - o.x) < 1.35 && S.z + 2.2 - carRear < 3.5 && S.speed > o.v + 3) { launch(o); break; }
+        crash(o.ramp ? '斜板沒對準！' : '追撞！', carRear - 2.3); break;
+      }
+    }
+    for (const b of barriers) if (Math.abs(S.z - b.z) < 2.4 && Math.abs(S.x - b.x) < b.w / 2 + 0.9) { crash('撞上違約路障！', b.z - 2.6); break; }
+  }
+  for (const c of coins) {
+    if (c.taken) continue;
+    if (Math.abs(S.z - c.z) < 2.0 && Math.abs(S.x - c.x) < 1.6 && Math.abs((S.y + 0.6) - c.y) < 2.2) {
+      c.taken = true; c.m.visible = false; S.coupons++; S.nitro = Math.min(100, S.nitro + (c.sky ? 25 : 12));
+      sfx(c.sky ? 1320 : 980, 0.12, 'triangle', 0.15);
+    }
+  }
+}
+let slowmo = 1, airStart = 0;
+function launch(o) {
+  S.air = true; S.y = 1.5; S.vy = 9 + S.speed * 0.16; S.rollTotal = 0; slowmo = CFG.SLOWMO;
+  $('hint').style.opacity = 1; toast('起飛！', '#ffd166', 700); sfx(220, 0.4, 'sawtooth', 0.15);
+}
+function land() {
+  S.air = false; S.y = 0; S.vy = 0; slowmo = 1; $('hint').style.opacity = 0;
+  const r = Math.atan2(Math.sin(S.roll), Math.cos(S.roll));   // 落地時車身歪幾度
+  const flips = Math.round(Math.abs(S.rollTotal) / (Math.PI * 2));
+  if (Math.abs(r) < 0.45) {
+    if (flips >= 1) { const pts = 800 * flips; S.stunt += pts; toast(`完美翻滾 ×${flips}！<br>+${pts}`, '#ffd166', 1600); sfx(660, 0.5, 'triangle', 0.2); }
+    else { S.stunt += 200; toast('飛越卡車 +200', '#ffd166'); }
+  } else { crash('落地翻車！'); }
+  S.roll = 0; S.rollTotal = 0; S.shake = Math.max(S.shake, 0.25);
+}
+
+function computeScore() {
+  if (S.finishTime == null) return S.coupons * 50 + S.stunt;
+  return Math.max(0, Math.round((CFG.TIME_LIMIT - S.finishTime) * 100)) + S.coupons * 50 + S.stunt;
+}
+
+// ════════════════ 多人連線（Supabase Realtime） ════════════════
+let channel = null, roomCode = null, isHost = false, myId = Math.random().toString(36).slice(2, 10), roster = [], pkResults = {};
+const myName = () => ($('name').value.trim() || '匿名車手').slice(0, 12);
+try { $('name').value = localStorage.getItem('yr-name') || ''; } catch (e) {}
+function saveName() { try { localStorage.setItem('yr-name', myName()); } catch (e) {} }
+
+async function joinRoom(code, host) {
+  if (!sb) { $('net-msg').textContent = '尚未設定連線，只能單人練習。'; return; }
+  saveName(); roomCode = code; isHost = host; S.mode = 'pk';
+  channel = sb.channel('yr-room-' + code, { config: { broadcast: { self: false }, presence: { key: myId } } });
+  channel.on('presence', { event: 'sync' }, () => {
+    const st = channel.presenceState();
+    roster = Object.entries(st).map(([id, arr]) => ({ id, name: arr[0].name, host: arr[0].host, at: arr[0].at })).sort((a, b) => a.at - b.at);
+    renderRoom();
+  });
+  channel.on('broadcast', { event: 'start' }, ({ payload }) => { if (S.phase === 'room' || S.phase === 'done') startCountdown(payload.seed); });
+  channel.on('broadcast', { event: 'pos' }, ({ payload: p }) => {
+    const idx = roster.findIndex(r => r.id === p.id);
+    const g = ghostFor(p.id, p.name, idx < 0 ? ghosts.size : idx);
+    Object.assign(g, { tx: p.x, tz: p.z, ty: p.y, roll: p.r, pitch: p.p, yaw: p.w });
+  });
+  channel.on('broadcast', { event: 'finish' }, ({ payload: p }) => { pkResults[p.id] = p; renderPk(); });
+  channel.subscribe(async status => {
+    if (status === 'SUBSCRIBED') {
+      await channel.track({ name: myName(), host, at: Date.now() });
+      $('room-code').textContent = code; S.phase = 'room'; show('p-room'); renderRoom();
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { $('net-msg').textContent = '連線失敗，請稍後再試。'; }
+  });
+}
+function leaveRoom() {
+  if (channel) { channel.unsubscribe(); channel = null; }
+  roomCode = null; isHost = false; S.mode = 'solo'; clearGhosts(); roster = [];
+  S.phase = 'lobby'; show('p-lobby'); loadBoard('lb-lobby');
+}
+function renderRoom() {
+  $('room-list').innerHTML = roster.map((r, i) => `<tr class="${r.id === myId ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td>${r.host ? '房主' : ''}</td></tr>`).join('');
+  $('b-start').style.display = isHost ? 'block' : 'none';
+  $('room-wait').style.display = isHost ? 'none' : 'block';
+  $('b-start').disabled = roster.length < 1;
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+let lastSend = 0;
+function sendPos(now) {
+  if (!channel || now - lastSend < 100) return; lastSend = now;
+  channel.send({ type: 'broadcast', event: 'pos', payload: { id: myId, name: myName(), x: +S.x.toFixed(2), z: +S.z.toFixed(1), y: +S.y.toFixed(2), r: +S.roll.toFixed(2), p: +S.pitch.toFixed(2), w: +S.yaw.toFixed(2) } });
+}
+function renderPk() {
+  const rows = roster.map(r => ({ id: r.id, name: r.name, res: pkResults[r.id] }));
+  rows.sort((a, b) => (b.res ? b.res.score : -1) - (a.res ? a.res.score : -1));
+  $('r-pk-table').innerHTML = '<tr><th>名次</th><th>車手</th><th>時間</th><th>分數</th></tr>' + rows.map((r, i) =>
+    `<tr class="${r.id === myId ? 'me' : ''}"><td>${r.res ? i + 1 : '-'}</td><td>${esc(r.name)}</td><td>${r.res ? (r.res.time != null ? r.res.time.toFixed(2) + 's' : '未完賽') : '比賽中…'}</td><td>${r.res ? r.res.score : ''}</td></tr>`).join('');
+}
+
+// ════════════════ 排行榜 ════════════════
+const LOCAL_KEY = 'yr-board';
+// flip_scores 欄位是 board / name / moves / seconds（排行榜由小排到大）
+// 所以把分數換算成 moves = 99999 - 分數，分數越高 → moves 越小 → 排越前面
+const SCORE_BASE = 99999;
+const sbHeaders = extra => Object.assign({ apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }, extra || {});
+async function submitScore(name, score, seconds) {
+  if (sb) {
+    try {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/' + LB.table, { method: 'POST',
+        headers: sbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+        body: JSON.stringify({ board: LB.board, name, moves: Math.max(0, SCORE_BASE - score), seconds: Math.round(seconds * 100) / 100 }) });
+      if (res.ok) return true; console.warn(await res.text());
+    } catch (e) { console.warn(e); }
+  }
+  try { const a = JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]'); a.push({ name, score }); localStorage.setItem(LOCAL_KEY, JSON.stringify(a)); } catch (e) {}
+  return false;
+}
+async function loadBoard(tableId) {
+  let rows = null;
+  if (sb) {
+    try {
+      const url = SUPABASE_URL + '/rest/v1/' + LB.table + '?board=eq.' + encodeURIComponent(LB.board) + '&select=name,moves,seconds&order=moves.asc,seconds.asc&limit=10';
+      const res = await fetch(url, { headers: sbHeaders() });
+      if (res.ok) rows = (await res.json()).map(r => ({ name: r.name, score: SCORE_BASE - r.moves }));
+    } catch (e) {}
+  }
+  if (!rows) { try { rows = JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]').sort((a, b) => b.score - a.score).slice(0, 10); } catch (e) { rows = []; } }
+  $(tableId).innerHTML = '<tr><th>#</th><th>車手</th><th>分數</th></tr>' + (rows.length ? rows.map((r, i) =>
+    `<tr class="${r.name === myName() ? 'me' : ''}"><td>${['🥇', '🥈', '🥉'][i] || i + 1}</td><td>${esc(r.name)}</td><td>${r.score.toLocaleString()}</td></tr>`).join('') : '<tr><td colspan="3">還沒有成績，搶第一！</td></tr>');
+}
+
+async function finishRace(dnf) {
+  S.phase = 'done'; S.finishTime = dnf ? null : S.t; S.score = computeScore(); $('hint').style.opacity = 0; slowmo = 1;
+  const name = myName();
+  $('r-title').textContent = dnf ? '時間到，未完賽' : '完賽！';
+  $('r-score').textContent = S.score.toLocaleString() + ' 分';
+  $('r-detail').innerHTML = (dnf ? '' : `完賽時間 <b>${S.finishTime.toFixed(2)} 秒</b>　`) + `票息 ${S.coupons} 枚　特技 ${S.stunt} 分　追撞 ${S.crashes} 次`;
+  $('r-pk').style.display = S.mode === 'pk' ? 'block' : 'none';
+  $('b-again').style.display = (S.mode === 'solo' || isHost) ? 'block' : 'none';
+  $('b-again').textContent = S.mode === 'pk' ? '同房再比一場' : '再來一場';
+  $('b-back').textContent = S.mode === 'pk' ? '離開房間' : '回大廳';
+  if (S.mode === 'pk') {
+    const p = { id: myId, name, time: S.finishTime, score: S.score }; pkResults[myId] = p;
+    channel && channel.send({ type: 'broadcast', event: 'finish', payload: p }); renderPk();
+  }
+  show('p-result');
+  $('lb-result').innerHTML = '<tr><td>上傳成績中…</td></tr>';
+  await submitScore(name, S.score, S.finishTime == null ? CFG.TIME_LIMIT : S.finishTime); loadBoard('lb-result');
+}
+
+// 按鈕
+$('b-solo').onclick = () => { saveName(); initAudio(); S.mode = 'solo'; startCountdown(Math.floor(Math.random() * 1e9)); };
+$('b-host').onclick = () => { initAudio(); joinRoom(String(1000 + Math.floor(Math.random() * 9000)), true); };
+$('b-join').onclick = () => { const c = $('code-in').value.trim(); if (!/^\d{4}$/.test(c)) { $('net-msg').textContent = '請輸入 4 位數房號'; return; } initAudio(); joinRoom(c, false); };
+$('b-start').onclick = () => { const seed = Math.floor(Math.random() * 1e9); channel.send({ type: 'broadcast', event: 'start', payload: { seed } }); startCountdown(seed); };
+$('b-leave').onclick = leaveRoom;
+$('b-again').onclick = () => { if (S.mode === 'pk') $('b-start').onclick(); else $('b-solo').onclick(); };
+$('b-back').onclick = () => { if (S.mode === 'pk') leaveRoom(); else { S.phase = 'lobby'; show('p-lobby'); loadBoard('lb-lobby'); } };
+
+// ════════════════ HUD ════════════════
+function updateProgress() {
+  const bar = $('progress'); let html = '<span class="flag">🏁</span>';
+  const pct = z => Math.max(0, Math.min(100, z / CFG.TRACK_LEN * 100));
+  ghosts.forEach(g => html += `<div class="pdot" style="left:${pct(g.z)}%;background:#${g.color.toString(16).padStart(6, '0')}"></div>`);
+  html += `<div class="pdot" style="left:${pct(S.z)}%;background:#d90429;z-index:2"></div>`;
+  bar.innerHTML = html;
+  if (S.mode === 'pk' && ghosts.size) {
+    let rank = 1; ghosts.forEach(g => { if (g.z > S.z) rank++; });
+    $('hud-rank').textContent = `第 ${rank} 名 / ${ghosts.size + 1}`;
+  } else $('hud-rank').textContent = '';
+}
+function updateHud() {
+  $('hud-time').textContent = S.t.toFixed(1);
+  $('spd').textContent = Math.round(S.speed * KMH);
+  $('nitro').style.width = S.nitro + '%';
+  $('h-coupon').textContent = S.coupons; $('h-stunt').textContent = S.stunt; $('h-crash').textContent = S.crashes;
+}
+
+// ════════════════ 主迴圈 ════════════════
+const clock = new THREE.Clock();
+let hudTick = 0, camPos = new THREE.Vector3(0, 3, -12), camLook = new THREE.Vector3();
+function loop() {
+  requestAnimationFrame(loop);
+  const realDt = Math.min(clock.getDelta(), 0.05), now = performance.now();
+  const dt = realDt * slowmo;
+
+  if (S.phase === 'countdown') {
+    const before = Math.ceil(S.count); S.count -= realDt; const after = Math.ceil(S.count);
+    $('countdown').textContent = S.count > 0 ? after : 'GO!';
+    if (after !== before && S.count > 0) sfx(440, 0.15, 'square', 0.12);
+    if (S.count <= 0) { sfx(880, 0.3, 'square', 0.15); S.phase = 'race'; setTimeout(() => $('countdown').style.display = 'none', 500); }
+  } else if (S.phase === 'race') {
+    S.t += dt; updateTraffic(); physics(dt);
+    if (S.z >= CFG.TRACK_LEN) finishRace(false);
+    else if (S.t >= CFG.TIME_LIMIT) finishRace(true);
+  }
+  if (S.phase === 'race' || S.phase === 'countdown' || S.phase === 'done') sendPos(now);
+
+  // 玩家車
+  me.root.position.set(S.x, S.y, S.z);
+  me.root.rotation.y = S.yaw; me.pivot.rotation.z = S.roll; me.pivot.rotation.x = S.pitch;
+  // 對手
+  ghosts.forEach(g => {
+    g.x += (g.tx - g.x) * Math.min(1, 10 * realDt); g.z += (g.tz - g.z) * Math.min(1, 10 * realDt); g.y += (g.ty - g.y) * Math.min(1, 10 * realDt);
+    g.root.position.set(g.x, g.y, g.z); g.root.rotation.y = g.yaw; g.pivot.rotation.z = g.roll; g.pivot.rotation.x = g.pitch;
+  });
+  coins.forEach(c => { if (!c.taken) c.m.rotation.y += 3 * realDt; });
+
+  // 攝影機：一般在車後，飛起來時拉到側邊電影鏡頭
+  const kmh = S.speed * KMH;
+  const off = S.air ? new THREE.Vector3(-5.5, 3.5, -8) : new THREE.Vector3(0, 2.4 + kmh / 400, -6.4 - kmh / 120);
+  const want = tmp.set(S.x, S.y, S.z).add(off);
+  camPos.lerp(want, Math.min(1, (S.air ? 3 : 8) * realDt));
+  if (S.phase === 'lobby' || S.phase === 'room') {           // 待機：繞車慢慢轉
+    const a = now / 4000; camPos.set(S.x + Math.sin(a) * 7, 2.2, S.z + Math.cos(a) * 7);
+  }
+  camera.position.copy(camPos);
+  if (S.shake > 0) { S.shake -= realDt; camera.position.x += (Math.random() - 0.5) * S.shake; camera.position.y += (Math.random() - 0.5) * S.shake; }
+  camLook.set(S.x, S.y + 0.9, S.z + (S.phase === 'race' || S.phase === 'done' ? 6 : 0));
+  camera.lookAt(camLook);
+  const fov = 58 + Math.min(20, kmh / 11) + (keys.Space && S.nitro > 0 ? 4 : 0);
+  if (Math.abs(camera.fov - fov) > 0.1) { camera.fov += (fov - camera.fov) * Math.min(1, 4 * realDt); camera.updateProjectionMatrix(); }
+  scene.getObjectByName('sky').position.copy(camera.position);
+
+  // 引擎聲
+  if (actx && gain) {
+    const target = muted || S.phase === 'lobby' || S.phase === 'room' ? 0 : 0.05;
+    gain.gain.value += (target - gain.gain.value) * 0.1;
+    const f = 45 + kmh * 0.9 + (S.air ? 40 : 0); osc.frequency.value = f; osc2.frequency.value = f * 0.5;
+  }
+  if ((hudTick += realDt) > 0.08) { hudTick = 0; updateHud(); updateProgress(); }
+  renderer.render(scene, camera);
+}
+
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// 啟動
+if (!sb) { $('b-host').disabled = true; $('b-join').disabled = true; $('net-msg').textContent = '尚未設定連線：目前只能單人練習，成績存在自己的電腦。'; }
+show('p-lobby'); loadBoard('lb-lobby');
+buildTrack(12345);
+loop();
+loadCar().then(ok => { me.body.add(ok ? (paintModel(carTemplate.children[0], MY_COLOR), carTemplate.clone(true)) : carMeshFor(MY_COLOR)); });
+</script>
+</body>
+</html>
