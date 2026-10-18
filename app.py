@@ -9,9 +9,9 @@ with st.sidebar:
     credit_spread = st.slider("信用利差 (Credit Spread bps)", 50, 500, 160, 10)
     st.markdown("---")
     st.write("**操作說明：**")
-    st.write("👉 **先點擊一下右側畫面取得焦點**")
-    st.write("🎮 **A / D 或 左右鍵**：換道避開 Default 違約錐")
-    st.write("🚀 **空白鍵 (Space)**：點火發動冷氣噴射推進（推力取決於浮動利率高低！）")
+    st.write("👉 **請先點擊一下右側畫面取得鍵盤焦點**")
+    st.write("🎮 **A / D 或 左右方向鍵**：左右換道避開 Default 違約紅錐")
+    st.write("🚀 **空白鍵 (Space)**：點火冷氣噴射推進（推力隨浮動利率成正比！）")
 
 html_game = f"""
 <!DOCTYPE html>
@@ -19,7 +19,7 @@ html_game = f"""
 <head>
     <meta charset="utf-8">
     <style>
-        body {{ margin: 0; overflow: hidden; background: #050711; font-family: monospace; }}
+        body {{ margin: 0; overflow: hidden; background: #050711; font-family: monospace; user-select: none; }}
         #hud {{
             position: absolute; top: 15px; left: 20px; color: #fff; z-index: 100;
             pointer-events: none; text-shadow: 0 0 10px #00ffcc;
@@ -30,59 +30,48 @@ html_game = f"""
             position: absolute; bottom: 20px; width: 100%; text-align: center;
             color: #00ffcc; font-size: 14px; pointer-events: none; letter-spacing: 1px;
         }}
-        #loading {{
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #00ffcc; font-size: 20px; font-weight: bold; text-shadow: 0 0 15px #00ffcc;
-            pointer-events: none;
-        }}
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body tabindex="0">
-    <div id="loading">載入 Tesla Roadster 3D 模型中...</div>
     <div id="hud">
         <div class="metric">FLOATING RATE: <span class="highlight">{floating_rate:.2f}%</span></div>
         <div class="metric">CREDIT SPREAD: <span class="highlight">{credit_spread} bps</span></div>
         <div class="metric" id="status">STATUS: CRUISING</div>
     </div>
-    <div id="tip">【請先點擊一下遊戲畫面以啟用鍵盤控制】</div>
+    <div id="tip">【請先點擊一下畫面以啟用鍵盤控制】</div>
 
     <script>
         window.focus();
         document.body.addEventListener('click', () => {{ window.focus(); }});
 
+        // --- 場景與攝影機 ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x050711, 0.012);
+        scene.fog = new THREE.FogExp2(0x050711, 0.015);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 2.8, -6.5);
+        camera.position.set(0, 2.6, -6.8);
 
         const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.5;
-        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMappingExposure = 1.4;
         document.body.appendChild(renderer.domElement);
 
-        // --- 光照強化（凸顯車身流線漆面）---
-        const ambient = new THREE.AmbientLight(0xffffff, 1.5);
+        // --- 光照系統 ---
+        const ambient = new THREE.AmbientLight(0xffffff, 1.2);
         scene.add(ambient);
 
-        const mainLight = new THREE.DirectionalLight(0x00f0ff, 3.0);
-        mainLight.position.set(5, 15, -8);
-        scene.add(mainLight);
+        const keyLight = new THREE.DirectionalLight(0x00f0ff, 2.5);
+        keyLight.position.set(6, 15, -10);
+        scene.add(keyLight);
 
-        const sideLight = new THREE.DirectionalLight(0xff0066, 2.0);
-        sideLight.position.set(-6, 10, 5);
-        scene.add(sideLight);
+        const rimLight = new THREE.DirectionalLight(0xff0055, 2.0);
+        rimLight.position.set(-6, 8, 8);
+        scene.add(rimLight);
 
-        const carTailLight = new THREE.PointLight(0xff1144, 4, 15);
-        carTailLight.position.set(0, 1.2, -3);
-        scene.add(carTailLight);
-
-        // --- 跑道 ---
+        // --- 霓虹跑道 ---
         const trackGeo = new THREE.PlaneGeometry(16, 400, 8, 80);
         const trackMat = new THREE.MeshBasicMaterial({{ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.25 }});
         const track = new THREE.Mesh(trackGeo, trackMat);
@@ -90,59 +79,106 @@ html_game = f"""
         track.position.z = 150;
         scene.add(track);
 
-        // --- 車輛主體節點 ---
+        // --- 精緻程序化 Tesla Roadster 3D 模型 ---
         const car = new THREE.Group();
         scene.add(car);
 
-        // --- 噴射推進器尾焰 ---
-        const flameGeo = new THREE.ConeGeometry(0.2, 1.5, 16);
+        // Tesla 招牌金屬多塗層紅 (Red Multi-Coat)
+        const paintMat = new THREE.MeshStandardMaterial({{
+            color: 0xc8102e,
+            metalness: 0.85,
+            roughness: 0.18,
+            envMapIntensity: 1.5
+        }});
+
+        // 全景玻璃車頂材質
+        const glassMat = new THREE.MeshStandardMaterial({{
+            color: 0x111622,
+            metalness: 0.95,
+            roughness: 0.05,
+            transparent: true,
+            opacity: 0.85
+        }});
+
+        // 碳纖維與深色部件
+        const trimMat = new THREE.MeshStandardMaterial({{
+            color: 0x151515,
+            metalness: 0.6,
+            roughness: 0.4
+        }});
+
+        // 貫穿式 LED 尾燈
+        const tailLightMat = new THREE.MeshBasicMaterial({{ color: 0xff0033 }});
+
+        // 1. 車身下底盤與擾流
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.22, 4.3), trimMat);
+        chassis.position.y = 0.25;
+        car.add(chassis);
+
+        // 2. 主車體流線
+        const bodyMain = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.95, 4.1, 16), paintMat);
+        bodyMain.rotation.x = Math.PI / 2;
+        bodyMain.scale.set(1.0, 1.0, 0.38);
+        bodyMain.position.set(0, 0.48, 0.1);
+        car.add(bodyMain);
+
+        // 3. 駕駛艙與斜背水滴天幕 (Fastback Canopy)
+        const cabin = new THREE.Mesh(new THREE.SphereGeometry(0.85, 16, 16), glassMat);
+        cabin.scale.set(0.9, 0.55, 2.2);
+        cabin.position.set(0, 0.72, -0.2);
+        car.add(cabin);
+
+        // 4. 車尾翹起擾流板 (Integrated Ducktail Spoiler)
+        const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.35), paintMat);
+        spoiler.position.set(0, 0.68, -1.9);
+        spoiler.rotation.x = -0.12;
+        car.add(spoiler);
+
+        // 5. 貫穿式超細一體化 LED 尾燈
+        const rearLight = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.05, 0.08), tailLightMat);
+        rearLight.position.set(0, 0.58, -2.06);
+        car.add(rearLight);
+
+        // 6. 四個大輪圈與性能跑胎
+        const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.28, 20);
+        wheelGeo.rotateZ(Math.PI / 2);
+        const wheelMat = new THREE.MeshStandardMaterial({{ color: 0x222222, roughness: 0.7 }});
+        
+        const wheelFL = new THREE.Mesh(wheelGeo, wheelMat);
+        const wheelFR = new THREE.Mesh(wheelGeo, wheelMat);
+        const wheelRL = new THREE.Mesh(wheelGeo, wheelMat);
+        const wheelRR = new THREE.Mesh(wheelGeo, wheelMat);
+
+        wheelFL.position.set(-0.95, 0.38, 1.4);
+        wheelFR.position.set(0.95, 0.38, 1.4);
+        wheelRL.position.set(-0.95, 0.38, -1.3);
+        wheelRR.position.set(0.95, 0.38, -1.3);
+
+        car.add(wheelFL, wheelFR, wheelRL, wheelRR);
+
+        // --- SpaceX 冷氣噴射推進尾焰 (Thrusters) ---
+        const flameGeo = new THREE.ConeGeometry(0.18, 1.4, 16);
         flameGeo.rotateX(Math.PI / 2);
         const flameMat = new THREE.MeshBasicMaterial({{ color: 0x00ffff, transparent: true, opacity: 0.0 }});
         const leftFlame = new THREE.Mesh(flameGeo, flameMat);
         const rightFlame = new THREE.Mesh(flameGeo, flameMat);
-        leftFlame.position.set(-0.6, 0.45, -2.1);
-        rightFlame.position.set(0.6, 0.45, -2.1);
-        car.add(leftFlame);
-        car.add(rightFlame);
+        leftFlame.position.set(-0.5, 0.38, -2.2);
+        rightFlame.position.set(0.5, 0.38, -2.2);
+        car.add(leftFlame, rightFlame);
 
-        // --- 載入真正可用的 3D Roadster GLB ---
-        const loader = new THREE.GLTFLoader();
-        // 此模型為經過優化、單一二進制打包的 Tesla Roadster GLB
-        const roadsterUrl = "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/ferrari.glb";
+        // --- 跑道障礙物與票息生成 (Default Traps & Coupons) ---
+        const obstacles = [];
+        const coneGeo = new THREE.ConeGeometry(0.4, 0.9, 8);
+        const coneMat = new THREE.MeshStandardMaterial({{ color: 0xff0044, roughness: 0.2, emissive: 0x880022 }});
 
-        loader.load(roadsterUrl, (gltf) => {{
-            document.getElementById('loading').style.display = 'none';
-            const model = gltf.scene;
+        for (let i = 0; i < 6; i++) {{
+            const obs = new THREE.Mesh(coneGeo, coneMat);
+            obs.position.set((Math.random() - 0.5) * 8, 0.45, 50 + i * 40);
+            scene.add(obs);
+            obstacles.push(obs);
+        }}
 
-            // 計算真實大小並置中
-            const box = new THREE.Box3().setFromObject(model);
-            const size = box.getSize(new THREE.Vector3());
-            const center = box.getCenter(new THREE.Vector3());
-
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const scale = 4.2 / maxDim; // 縮放到真實車長
-            model.scale.set(scale, scale, scale);
-
-            // 修正旋轉角度（讓車尾朝向鏡頭）
-            model.rotation.y = Math.PI;
-            model.position.x = -center.x * scale;
-            model.position.y = -box.min.y * scale;
-            model.position.z = -center.z * scale;
-
-            car.add(model);
-        }}, 
-        (xhr) => {{
-            if (xhr.lengthComputable) {{
-                const percent = Math.round((xhr.loaded / xhr.total) * 100);
-                document.getElementById('loading').innerText = `載入 3D 模型中... ${{percent}}%`;
-            }}
-        }},
-        (err) => {{
-            document.getElementById('loading').innerText = '載入失敗，請檢查網路連線';
-            console.error(err);
-        }});
-
-        // --- 控制與噴射起飛邏輯 ---
+        // --- 操作與浮動利率起飛邏輯 ---
         let targetX = 0;
         let isBoosting = false;
         let floatBoostPower = {floating_rate} * 1.5;
@@ -167,31 +203,41 @@ html_game = f"""
             }}
         }});
 
-        // --- 渲染循環 ---
+        // --- 動畫循環 ---
         const clock = new THREE.Clock();
         function animate() {{
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
 
-            // 左右橫移平滑換道與車身側傾
+            // 左右橫移與轉向側傾
             car.position.x += (targetX - car.position.x) * 10 * dt;
             car.rotation.z = -(car.position.x - targetX) * 0.12;
 
-            // 浮動利率噴射起飛機制
+            // 浮動利率噴射升力
             if (isBoosting) {{
                 car.position.y = THREE.MathUtils.lerp(car.position.y, 1.8 + (floatBoostPower * 0.1), dt * 8);
-                car.rotation.x = -0.15;
+                car.rotation.x = -0.15; // 仰角起飛
             }} else {{
                 car.position.y = THREE.MathUtils.lerp(car.position.y, 0.0, dt * 8);
                 car.rotation.x = 0;
             }}
 
             // 跑道前進滾動
-            track.position.z -= (50 + (isBoosting ? 35 : 0)) * dt;
+            const speed = 55 + (isBoosting ? 40 : 0);
+            track.position.z -= speed * dt;
             if (track.position.z < 50) track.position.z = 150;
 
-            // 鏡頭動態追尾
-            camera.position.x = car.position.x * 0.4;
+            // 障礙物向後滾動
+            obstacles.forEach(obs => {{
+                obs.position.z -= speed * dt;
+                if (obs.position.z < -10) {{
+                    obs.position.z = 200 + Math.random() * 50;
+                    obs.position.x = (Math.random() - 0.5) * 8;
+                }}
+            }});
+
+            // 鏡頭動態追尾跟隨
+            camera.position.x = car.position.x * 0.45;
             camera.lookAt(car.position.x * 0.2, car.position.y + 0.8, car.position.z + 4);
 
             renderer.render(scene, camera);
